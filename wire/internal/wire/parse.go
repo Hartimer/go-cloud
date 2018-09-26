@@ -432,6 +432,9 @@ func (oc *objectCache) processExpr(pkg *loader.PackageInfo, expr ast.Expr, varNa
 			return nil, []error{notePosition(exprPos, errors.New("unknown pattern"))}
 		}
 		switch fnObj.Name() {
+		case "NewReplacement":
+			pset, errs := oc.processNewReplacement(pkg, call, varName)
+			return pset, notePositionAll(exprPos, errs)
 		case "NewSet":
 			pset, errs := oc.processNewSet(pkg, call, varName)
 			return pset, notePositionAll(exprPos, errs)
@@ -465,6 +468,37 @@ func (oc *objectCache) processExpr(pkg *loader.PackageInfo, expr ast.Expr, varNa
 		return p, nil
 	}
 	return nil, []error{notePosition(exprPos, errors.New("unknown pattern"))}
+}
+
+func (oc *objectCache) processNewReplacement(pkg *loader.PackageInfo, call *ast.CallExpr, varName string) (*ProviderSet, []error) {
+	pset := &ProviderSet{
+		Pos:     call.Pos(),
+		PkgPath: pkg.Pkg.Path(),
+		VarName: varName,
+	}
+	var errs []error
+	ec := new(errorCollector)
+	item, errs := oc.processExpr(pkg, call.Args[0], "")
+	if len(errs) > 0 {
+		ec.add(errs...)
+		return nil, errs
+	}
+	pset = item.(*ProviderSet)
+	item, errs = oc.processExpr(pkg, call.Args[1], "")
+	if len(errs) > 0 {
+		ec.add(errs...)
+		return nil, errs
+	}
+	replacementSet := item.(*ProviderSet)
+	pset.Imports = append(pset.Imports, replacementSet)
+	pset.providerMap, pset.srcMap, errs = replaceProviderMap(oc.prog.Fset, oc.hasher, pset)
+	if len(errs) > 0 {
+		return nil, errs
+	}
+	if errs := verifyAcyclic(pset.providerMap, oc.hasher); len(errs) > 0 {
+		return nil, errs
+	}
+	return pset, nil
 }
 
 func (oc *objectCache) processNewSet(pkg *loader.PackageInfo, call *ast.CallExpr, varName string) (*ProviderSet, []error) {

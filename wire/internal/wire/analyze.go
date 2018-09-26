@@ -294,9 +294,20 @@ func verifyArgsUsed(set *ProviderSet, used []*providerSetSrc) []error {
 	return errs
 }
 
-// buildProviderMap creates the providerMap and srcMap fields for a given provider set.
-// The given provider set's providerMap and srcMap fields are ignored.
+// replaceProviderMap delegates to buildOrReplaceProviderMap and allows replacements.
+func replaceProviderMap(fset *token.FileSet, hasher typeutil.Hasher, set *ProviderSet) (*typeutil.Map, *typeutil.Map, []error) {
+	return buildOrReplaceProviderMap(fset, hasher, set, true)
+}
+
+// buildProviderMap delegates to buildOrReplaceProviderMap and does not allow replacements.
 func buildProviderMap(fset *token.FileSet, hasher typeutil.Hasher, set *ProviderSet) (*typeutil.Map, *typeutil.Map, []error) {
+	return buildOrReplaceProviderMap(fset, hasher, set, false)
+}
+
+// buildOrReplaceProviderMap creates the providerMap and srcMap fields for a given provider set.
+// The given provider set's providerMap and srcMap fields are ignored.
+// It optionally allows replacing providers. If replacement is now allowed an error is return on duplicates.
+func buildOrReplaceProviderMap(fset *token.FileSet, hasher typeutil.Hasher, set *ProviderSet, allowReplace bool) (*typeutil.Map, *typeutil.Map, []error) {
 	providerMap := new(typeutil.Map)
 	providerMap.SetHasher(hasher)
 	srcMap := new(typeutil.Map)
@@ -308,7 +319,7 @@ func buildProviderMap(fset *token.FileSet, hasher typeutil.Hasher, set *Provider
 	ec := new(errorCollector)
 	for _, imp := range set.Imports {
 		imp.providerMap.Iterate(func(k types.Type, v interface{}) {
-			if providerMap.At(k) != nil {
+			if !allowReplace && providerMap.At(k) != nil {
 				ec.add(bindingConflictError(fset, imp.Pos, k, setMap.At(k).(*ProviderSet)))
 				return
 			}
@@ -325,7 +336,7 @@ func buildProviderMap(fset *token.FileSet, hasher typeutil.Hasher, set *Provider
 	for _, p := range set.Providers {
 		src := &providerSetSrc{Provider: p}
 		for _, typ := range p.Out {
-			if providerMap.At(typ) != nil {
+			if !allowReplace && providerMap.At(typ) != nil {
 				ec.add(bindingConflictError(fset, p.Pos, typ, setMap.At(typ).(*ProviderSet)))
 				continue
 			}
@@ -335,7 +346,7 @@ func buildProviderMap(fset *token.FileSet, hasher typeutil.Hasher, set *Provider
 		}
 	}
 	for _, v := range set.Values {
-		if providerMap.At(v.Out) != nil {
+		if !allowReplace && providerMap.At(v.Out) != nil {
 			ec.add(bindingConflictError(fset, v.Pos, v.Out, setMap.At(v.Out).(*ProviderSet)))
 			continue
 		}
@@ -350,7 +361,7 @@ func buildProviderMap(fset *token.FileSet, hasher typeutil.Hasher, set *Provider
 	// Process bindings in set. Must happen after the other providers to
 	// ensure the concrete type is being provided.
 	for _, b := range set.Bindings {
-		if providerMap.At(b.Iface) != nil {
+		if !allowReplace && providerMap.At(b.Iface) != nil {
 			ec.add(bindingConflictError(fset, b.Pos, b.Iface, setMap.At(b.Iface).(*ProviderSet)))
 			continue
 		}

@@ -26,6 +26,12 @@ func NewSet(...interface{}) ProviderSet {
 	return ProviderSet{}
 }
 
+// NewReplacement takes two ProvideSets and uses the second one to
+// add or replace entries on the first one.
+func NewReplacement(original ProviderSet, replacement ProviderSet) ProviderSet {
+	return ProviderSet{}
+}
+
 // Build is placed in the body of an injector function to declare the
 // providers to use. Its arguments are the same as NewSet. Its return
 // value is an error message that can be sent to panic.
